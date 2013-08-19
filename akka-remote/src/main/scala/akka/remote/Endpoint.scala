@@ -242,7 +242,12 @@ private[remote] class ReliableDeliverySupervisor(
     case s: Send ⇒
       handleSend(s)
     case ack: Ack ⇒
-      resendBuffer = resendBuffer.acknowledge(ack)
+      try resendBuffer = resendBuffer.acknowledge(ack)
+      catch {
+        case NonFatal(e) ⇒
+          throw new InvalidAssociationException("Error encountered while processing system message acknowledgement", e)
+      }
+
       if (lastCumulativeAck < ack.cumulativeAck) {
         resendDeadline = Deadline.now + settings.SysResendTimeout
         lastCumulativeAck = ack.cumulativeAck
