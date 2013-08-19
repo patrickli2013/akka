@@ -36,19 +36,25 @@ private[io] class TcpOutgoingConnection(_tcp: TcpExt,
   channelRegistry.register(channel, SelectionKey.OP_CONNECT)
   timeout foreach context.setReceiveTimeout //Initiate connection timeout if supplied
 
+  private def stop(): Unit = stopWith(CloseInformation(Set(commander), connect.failureMessage))
+
   def receive: Receive = {
     case registration: ChannelRegistration ⇒
       log.debug("Attempting connection to [{}]", remoteAddress)
-      if (channel.connect(remoteAddress))
-        completeConnect(registration, commander, options)
-      else
-        context.become(connecting(registration, commander, options))
+      try {
+        if (channel.connect(remoteAddress))
+          completeConnect(registration, commander, options)
+        else
+          context.become(connecting(registration, commander, options))
+      } catch {
+        case e: IOException ⇒
+          log.debug("Could not establish connection to [{}] due to {}", remoteAddress, e)
+          stop()
+      }
   }
 
   def connecting(registration: ChannelRegistration, commander: ActorRef,
                  options: immutable.Traversable[SocketOption]): Receive = {
-    def stop(): Unit = stopWith(CloseInformation(Set(commander), connect.failureMessage))
-
     {
       case ChannelConnectable ⇒
         if (timeout.isDefined) context.setReceiveTimeout(Duration.Undefined) // Clear the timeout
